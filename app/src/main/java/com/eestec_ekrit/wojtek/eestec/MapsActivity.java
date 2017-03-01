@@ -8,18 +8,24 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.support.design.widget.FloatingActionButton;
+import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
+import com.github.clans.fab.FloatingActionMenu;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationListener;
@@ -34,13 +40,25 @@ import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.PolylineOptions;
 
+import org.json.JSONObject;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.BreakIterator;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 public class MapsActivity extends FragmentActivity
         implements
         OnMapReadyCallback,
-        GoogleMap.OnMyLocationButtonClickListener,
         GoogleApiClient.OnConnectionFailedListener,
         LocationListener,
         ActivityCompat.OnRequestPermissionsResultCallback,
@@ -51,6 +69,10 @@ public class MapsActivity extends FragmentActivity
     LatLng latLng;
     Marker currLocationMarker;
     LocationRequest mLocationRequest;
+    ArrayList<LatLng> markerPoints = new ArrayList<LatLng>();
+    FloatingActionMenu FAM;
+    com.github.clans.fab.FloatingActionButton FABloc1, FABloc2, FABloc3;
+    ;
     private GoogleMap mMap;
     private GoogleApiClient mGoogleApiClient;
     /**
@@ -72,10 +94,153 @@ public class MapsActivity extends FragmentActivity
         if (mGoogleApiClient == null) {
             mGoogleApiClient = new GoogleApiClient.Builder(this)
                     .addConnectionCallbacks(this)
-                    .addOnConnectionFailedListener((GoogleApiClient.OnConnectionFailedListener) this)
+                    .addOnConnectionFailedListener(this)
                     .addApi(LocationServices.API)
                     .build();
         }
+//        FloatingActionButton fab_my_position = (FloatingActionButton) findViewById(R.id.fab_my_position);
+        FAM = (FloatingActionMenu) findViewById(R.id.material_design_android_floating_action_menu);
+        FABloc1 = (com.github.clans.fab.FloatingActionButton) findViewById(R.id.material_design_floating_action_menu_item1);
+        FABloc2 = (com.github.clans.fab.FloatingActionButton) findViewById(R.id.material_design_floating_action_menu_item2);
+        FABloc3 = (com.github.clans.fab.FloatingActionButton) findViewById(R.id.material_design_floating_action_menu_item3);
+
+//        fab_my_position.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View view) {
+//                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(currLocationMarker.getPosition(), 16));
+//            }
+//        });
+
+        FABloc1.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                LatLng origin = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
+                LatLng destination = new LatLng(50.061092, 19.932064); // hostel
+
+                String url = getDirectionsUrl(origin, destination);
+                DownloadTask downloadTask = new DownloadTask();
+                // Start downloading json data from Google Directions API
+                downloadTask.execute(url);
+            }
+        });
+
+        FABloc2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                LatLng origin = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
+                LatLng destination = new LatLng(50.065616, 19.921565); // uczelnia
+                String url = getDirectionsUrl(origin, destination);
+                DownloadTask downloadTask = new DownloadTask();
+                // Start downloading json data from Google Directions API
+                downloadTask.execute(url);
+            }
+        });
+
+        FABloc3.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                LatLng origin = new LatLng(mLastLocation.getLatitude(), mLastLocation.getLongitude());
+                LatLng destination = new LatLng(50.067270, 19.947413); // dworzec
+                String url = getDirectionsUrl(origin, destination);
+                DownloadTask downloadTask = new DownloadTask();
+                // Start downloading json data from Google Directions API
+                downloadTask.execute(url);
+            }
+        });
+    }
+
+    private String getDirectionsUrl(LatLng origin, LatLng dest) {
+        if (markerPoints.size() >= 1) {
+            markerPoints.clear();
+            mMap.clear();
+        }
+        //                    Log.d("marker points",  String.valueOf(markerPoints.size()));
+        markerPoints.add(origin);
+        // Adding new item to the ArrayList
+        markerPoints.add(dest);
+
+        //Creating MarkerOptions
+        MarkerOptions options = new MarkerOptions();
+        MarkerOptions options_myLoc = new MarkerOptions();
+
+        //Setting the position of the marker
+        options.position(dest);
+        options_myLoc.position(origin);
+
+        // start location - red, end location - green
+
+        options_myLoc.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+
+        options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+
+        // Add new marker to map
+        mMap.addMarker(options_myLoc);
+        mMap.addMarker(options);
+
+        // Origin of route
+        String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
+
+        // Destination of route
+        String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+
+        // Sensor enabled
+        String sensor = "sensor=false";
+
+        // travel mode
+        String travel_mode = "mode=walking";
+
+        // Building the parameters to the web service
+        String parameters = str_origin + "&" + str_dest + "&" + sensor + "&" + travel_mode;
+
+        // Output format
+        String output = "json";
+
+        // Building the url to the web service
+        String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters;
+        Log.d("maps url", url);
+
+        return url;
+    }
+
+    /**
+     * A method to download json data from url
+     */
+
+    private String downloadUrl(String strUrl) throws IOException {
+        String data = "";
+        InputStream iStream = null;
+        HttpURLConnection urlConnection = null;
+        try {
+            URL url = new URL(strUrl);
+            // Creating an http connection to communicate with url
+            urlConnection = (HttpURLConnection) url.openConnection();
+
+            // Connecting to url
+            urlConnection.connect();
+
+            // Reading data from url
+            iStream = new BufferedInputStream(urlConnection.getInputStream());
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+
+            StringBuffer sb = new StringBuffer();
+
+            String line = "";
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+
+            data = sb.toString();
+
+            br.close();
+        } catch (Exception e) {
+            Log.d("E while downloading url", e.toString());
+        } finally {
+            iStream.close();
+            urlConnection.disconnect();
+        }
+        Log.d("download url", data);
+        return data;
     }
 
     protected void onStart() {
@@ -100,8 +265,6 @@ public class MapsActivity extends FragmentActivity
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-        mMap.setOnMyLocationButtonClickListener(this);
-
         enableMyLocation();
     }
 
@@ -114,13 +277,6 @@ public class MapsActivity extends FragmentActivity
             // Access to the location has been granted to the app
             mMap.setMyLocationEnabled(true);
         }
-    }
-
-    @Override
-    public boolean onMyLocationButtonClick() {
-        Toast.makeText(this, "Showing your location", Toast.LENGTH_SHORT).show();
-        // Return false because default behavior still occurs (the camera animates to the user's current position).)
-        return false;
     }
 
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -151,27 +307,20 @@ public class MapsActivity extends FragmentActivity
                     new DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(DialogInterface dialog, int which) {
+                            if (ContextCompat.checkSelfPermission(MapsActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                                ActivityCompat.requestPermissions(MapsActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+                            }
                             finish();
+                            startActivity(getIntent());
                         }
                     });
         }
+
     }
 
     /**
      * Displays dialog with error message explaining that the location permission is missing.
      */
-    private void showMissingPermissionError() {
-        new AlertDialog.Builder(this)
-                .setTitle("Alert!")
-                .setMessage("In order for app to work you must allow location permission")
-                .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialogInterface, int i) {
-                        // continue
-                        finish();
-                    }
-                });
-    }
 
     private void showMessageOKCancel(String message, DialogInterface.OnClickListener okListener) {
         new AlertDialog.Builder(this)
@@ -189,7 +338,6 @@ public class MapsActivity extends FragmentActivity
                 .create()
                 .show();
     }
-
 
     private void turn_GPS_on() {
         int GPSoff = 0;
@@ -259,6 +407,7 @@ public class MapsActivity extends FragmentActivity
 
         //place marker at current position
         //mMap.clear();
+        mLastLocation = location;
         if (currLocationMarker != null) {
             currLocationMarker.remove();
         }
@@ -277,11 +426,96 @@ public class MapsActivity extends FragmentActivity
 
     }
 
+    //Fetch data from url passed
+    private class DownloadTask extends AsyncTask<String, Void, String> {
+        //Downloading data in non-ui thread
+        @Override
+        protected String doInBackground(String... url) {
+            //For storing data from web service
+            String data = "";
+            try {
+                //Fetching the data from web service
+                data = downloadUrl(url[0]);
+            } catch (Exception e) {
+                Log.d("Background Task", e.toString());
+            }
+            return data;
+        }
+
+        //Executes in UI thread, after the execution of doInBackground()
+        @Override
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
+            ParserTask parserTask = new ParserTask();
+
+            //Invokes the thread for parsing the JSON data
+            parserTask.execute(result);
+        }
+    }
+
+    /**
+     * A class to parse the Google Places in JSON format
+     */
+    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
+
+        // Parsing the data in non-ui thread
+        @Override
+        protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
+            JSONObject jObject;
+            List<List<HashMap<String, String>>> routes = null;
+            try {
+                jObject = new JSONObject(jsonData[0]);
+                DirectionsJSONParser parser = new DirectionsJSONParser();
+
+                //Starts parsing data
+                routes = parser.parse(jObject);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return routes;
+        }
+
+        //Executes in UI thread, after the parsing process
+        @Override
+        protected void onPostExecute(List<List<HashMap<String, String>>> result) {
+            ArrayList<LatLng> points = null;
+            PolylineOptions lineOptions = null;
+            points = new ArrayList<LatLng>();
+
+            //Traversing through all the routes
+            for (int i = 0; i < result.size(); i++) {
+
+                lineOptions = new PolylineOptions();
+
+                //Fetching i-th route
+                List<HashMap<String, String>> path = result.get(i);
+
+                //Fetching all the points in i-th route
+                for (int j = 0; j < path.size(); j++) {
+                    HashMap<String, String> point = path.get(j);
+
+                    double lat = Double.parseDouble(point.get("lat"));
+                    double lng = Double.parseDouble(point.get("lng"));
+                    LatLng position = new LatLng(lat, lng);
+                    points.add(position);
+                }
+
+                //Adding all the points in the route to LineOptions
+//                lineOptions.addAll(points);
+//                lineOptions.width(2);
+//                lineOptions.color(Color.CYAN);
+            }
+            Log.d("onPostExecute", lineOptions.toString());
+            lineOptions.addAll(points);
+            lineOptions.width(20);
+            lineOptions.color(Color.BLUE);
+            //Drawing polyline in the Google Map for the i-th route
+            mMap.addPolyline(lineOptions);
+        }
+    }
+
 }
 
 
 // TODO: 06.01.2017 3 - kolory pasków na bardziej eestecowe
-// TODO: 06.01.2017 4 - znaczniki na mapie 
-// TODO: 06.01.2017 5 - nawigacja
-// TODO: 06.01.2017 6 - nowy button do mojej lokalizacji
-// TODO: 06.01.2017 8 - floating buttons
+
